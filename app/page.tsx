@@ -18,11 +18,19 @@ function formatTime(ts: number) {
   return d.toLocaleString();
 }
 
-function parseEmoji(text: string) {
+function parse(text: string) {
   // Use twemoji to parse emoji to <img> tags
-  return twemoji.parse(text, { folder: "svg", ext: ".svg" });
+  return fixLatin1ToUtf8(text)
 }
-
+function fixLatin1ToUtf8(str:string) {
+  // Convert each character to its Latin-1 byte
+  const latin1Bytes = new Uint8Array([...str].map(c => c.charCodeAt(0)));
+  
+  // Decode as UTF-8
+  const utf8String = new TextDecoder("utf-8").decode(latin1Bytes);
+  
+  return utf8String;
+}
 function MessageBubble({ msg }: { msg: Message }) {
   if (!msg) return null;
   const isSelf = msg.sender_name === SELF;
@@ -49,7 +57,7 @@ function MessageBubble({ msg }: { msg: Message }) {
           wordBreak: "break-word",
           boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
         }}
-        dangerouslySetInnerHTML={{ __html: msg.content ? parseEmoji(msg.content) : "" }}
+        dangerouslySetInnerHTML={{ __html: msg.content ? parse(msg.content) : "" }}
       />
       {msg.reactions && msg.reactions.length > 0 && (
         <div style={{ marginTop: 4, display: "flex", gap: 8 }}>
@@ -67,7 +75,7 @@ function MessageBubble({ msg }: { msg: Message }) {
                 boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
               }}
               title={r.actor}
-              dangerouslySetInnerHTML={{ __html: parseEmoji(r.reaction) }}
+              dangerouslySetInnerHTML={{ __html: parse(r.reaction) }}
             />
           ))}
         </div>
@@ -120,9 +128,16 @@ export default function Home() {
     if (res.ok) {
       const data = await res.json();
       if (data.messages.length < PAGE_SIZE) setHasMore(false);
-      setMessages(prev => replace ? data.messages : [...prev, ...data.messages]);
-      console.log(data.messages)
+      // Filter out messages that start with 'Používateľ reagoval' or 'Pouzivatel reagoval' (with or without diacritics)
+      const filtered = data.messages.filter((msg: Message) => {
+        if (!msg.content) return true;
+        // Decode the content for filtering
+        const decoded = fixLatin1ToUtf8(msg.content);
+        return !/^Pou[žz]ívate[ľl] reagoval/.test(decoded);
+      });
+      setMessages(prev => replace ? filtered : [...prev, ...filtered]);
       setOffset(startOffset + data.messages.length);
+      console.log(filtered);
     }
     setLoading(false);
   };
