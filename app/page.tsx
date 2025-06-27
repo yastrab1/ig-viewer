@@ -1,103 +1,191 @@
-import Image from "next/image";
+"use client";
+import React, { useState, useEffect, useRef } from "react";
+// @ts-ignore
+import twemoji from "twemoji";
+
+interface Message {
+  sender_name: string;
+  timestamp_ms: number;
+  content?: string;
+  reactions?: { reaction: string; actor: string }[];
+}
+
+const PAGE_SIZE = 30;
+const SELF = "Lukas Lipka"; // Change if needed for alignment
+
+function formatTime(ts: number) {
+  const d = new Date(ts);
+  return d.toLocaleString();
+}
+
+function parseEmoji(text: string) {
+  // Use twemoji to parse emoji to <img> tags
+  return twemoji.parse(text, { folder: "svg", ext: ".svg" });
+}
+
+function MessageBubble({ msg }: { msg: Message }) {
+  if (!msg) return null;
+  const isSelf = msg.sender_name === SELF;
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: isSelf ? "flex-end" : "flex-start",
+        marginBottom: 16,
+      }}
+    >
+      <div style={{ fontSize: 12, color: "#888", marginBottom: 2 }}>
+        {msg.sender_name} · {formatTime(msg.timestamp_ms)}
+      </div>
+      <div
+        style={{
+          background: isSelf ? "#3897f0" : "#efefef",
+          color: isSelf ? "#fff" : "#222",
+          borderRadius: 18,
+          padding: "10px 16px",
+          maxWidth: 400,
+          fontSize: 16,
+          wordBreak: "break-word",
+          boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+        }}
+        dangerouslySetInnerHTML={{ __html: msg.content ? parseEmoji(msg.content) : "" }}
+      />
+      {msg.reactions && msg.reactions.length > 0 && (
+        <div style={{ marginTop: 4, display: "flex", gap: 8 }}>
+          {msg.reactions.map((r, i) => (
+            <span
+              key={i}
+              style={{
+                background: "#fff",
+                border: "1px solid #eee",
+                borderRadius: 12,
+                padding: "2px 8px",
+                fontSize: 16,
+                display: "flex",
+                alignItems: "center",
+                boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
+              }}
+              title={r.actor}
+              dangerouslySetInnerHTML={{ __html: parseEmoji(r.reaction) }}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [password, setPassword] = useState("");
+  const [authenticated, setAuthenticated] = useState(false);
+  const [error, setError] = useState("");
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const viewerRef = useRef<HTMLDivElement>(null);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    const res = await fetch("/api/auth", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password }),
+    });
+    if (res.ok) {
+      setAuthenticated(true);
+    } else {
+      const data = await res.json();
+      setError(data.error || "Authentication failed");
+    }
+  };
+
+  // Fetch messages
+  useEffect(() => {
+    if (!authenticated) return;
+    setMessages([]);
+    setOffset(0);
+    setHasMore(true);
+    loadMore(0, true);
+    // eslint-disable-next-line
+  }, [authenticated]);
+
+  const loadMore = async (startOffset = offset, replace = false) => {
+    console.log("loadMore", startOffset, replace);
+    if (loading || !hasMore) return;
+    setLoading(true);
+    const res = await fetch(`/api/messages?offset=${startOffset}&limit=${PAGE_SIZE}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.messages.length < PAGE_SIZE) setHasMore(false);
+      setMessages(prev => replace ? data.messages : [...prev, ...data.messages]);
+      console.log(data.messages)
+      setOffset(startOffset + data.messages.length);
+    }
+    setLoading(false);
+  };
+
+  // Infinite scroll
+  useEffect(() => {
+    if (!authenticated) return;
+    const handleScroll = () => {
+      if (!viewerRef.current) return;
+      const { scrollTop, scrollHeight, clientHeight } = viewerRef.current;
+      if (scrollHeight - scrollTop - clientHeight < 100 && hasMore && !loading) {
+        loadMore();
+      }
+    };
+    const ref = viewerRef.current;
+    if (ref) ref.addEventListener("scroll", handleScroll);
+    return () => { if (ref) ref.removeEventListener("scroll", handleScroll); };
+    // eslint-disable-next-line
+  }, [authenticated, hasMore, loading, offset]);
+
+  if (!authenticated) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
+        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 300 }}>
+          <h2>Enter Password to View Messages</h2>
+          <input
+            type="password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            placeholder="Password"
+            style={{ padding: 8, fontSize: 16, borderRadius: 8, border: "1px solid #ccc" }}
           />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+          <button type="submit" style={{ padding: 10, fontSize: 16, borderRadius: 8, background: "#3897f0", color: "white", border: "none" }}>View</button>
+          {error && <div style={{ color: "red" }}>{error}</div>}
+        </form>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ background: "#fafafa", minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center" }}>
+      <h2 style={{ margin: 24, fontWeight: 600, fontSize: 24 }}>Instagram Message Viewer</h2>
+      <div
+        ref={viewerRef}
+        style={{
+          width: "100%",
+          maxWidth: 500,
+          height: "70vh",
+          overflowY: "auto",
+          background: "#fff",
+          borderRadius: 16,
+          boxShadow: "0 2px 16px rgba(0,0,0,0.07)",
+          padding: 24,
+          marginBottom: 32,
+        }}
+      >
+        {messages.length === 0 && <div style={{ color: "#888", textAlign: "center" }}>No messages yet.</div>}
+        {messages.map((msg, i) => (
+          <MessageBubble key={i} msg={msg} />
+        ))}
+        {loading && <div style={{ color: "#888", textAlign: "center", margin: 16 }}>Loading...</div>}
+        {!hasMore && messages.length > 0 && <div style={{ color: "#bbb", textAlign: "center", margin: 16 }}>End of conversation</div>}
+      </div>
     </div>
   );
 }
