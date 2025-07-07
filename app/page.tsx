@@ -24,12 +24,8 @@ function parse(text: string) {
 }
 function fixLatin1ToUtf8(str:string) {
   // Convert each character to its Latin-1 byte
-  const latin1Bytes = new Uint8Array([...str].map(c => c.charCodeAt(0)));
-  
-  // Decode as UTF-8
-  const utf8String = latin1Bytes
-  
-  return utf8String;
+
+  return str;
 }
 function MessageBubble({ msg }: { msg: Message }) {
   if (!msg) return null;
