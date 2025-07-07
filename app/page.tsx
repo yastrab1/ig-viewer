@@ -27,7 +27,7 @@ function fixLatin1ToUtf8(str:string) {
   const latin1Bytes = new Uint8Array([...str].map(c => c.charCodeAt(0)));
   
   // Decode as UTF-8
-  const utf8String = new TextDecoder("utf-8").decode(latin1Bytes);
+  const utf8String = latin1Bytes
   
   return utf8String;
 }
@@ -185,7 +185,7 @@ export default function Home() {
         style={{
           width: "100%",
           maxWidth: 500,
-          height: "70vh",
+          height: "80vh",
           overflowY: "auto",
           background: "#fff",
           borderRadius: 16,
